@@ -1,35 +1,38 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using CADPlot.Moudle;
 
 namespace CADPlot
 {
+    public delegate void UpdateUIAttrib();
+
     public partial class frmShow : Form
     {
-        public delegate void FilterOrPrintPaperDelegate();
-
-        private static readonly Dictionary<string, string> PaperDictionary = new Dictionary<string, string>
+        private enum DataViewColumn
         {
-            {"ALL", "所有图纸"},
-            {"A4", "A4"},
-            {"A3", "A3"},
-            {"A2", "A2"},
-            {"A1", "A1"},
-            {"A0", "A0"},
-            {"A43", "A4×3"},
-            {"A44", "A4×4"},
-            {"A33", "A3×3"},
-            {"A34", "A3×4"},
-            {"OTHER", "未知图幅"},
-        };
+            是否已打印 = 0,
+            文件名 = 1,
+            图幅 = 2,
+            已打印 = 3,
+            角度 = 4,
+            比例 = 5,
+            宽度 = 6,
+            高度 = 7,
+            文件路径 = 8,
+            打印机 = 9,
+            打印尺寸 = 10,
+            打印样式 = 11
+        }
 
-        private readonly CadPaperToPrint cadPapersToPrint = new CadPaperToPrint();
-
-        private bool IsBusy;
-
-        private string _currentFormatName = "";
-        private CadPapers currentPapers;
+        private readonly CadPaperForPrinting _cadPapersForPrinting = new CadPaperForPrinting();
+        private bool _hasFillter;
+        private bool _isBusy;
+        private string _currentMapSheet = "";
+        private CadPapers _currentPapers;
 
         public frmShow()
         {
@@ -37,9 +40,228 @@ namespace CADPlot
             SetDataViewFormat();
             Initialize();
 
-            cadPapersToPrint.PlotingEvent += OnPlotingEvent;
+            _cadPapersForPrinting.CadPaperProgress += OnCadPaperProgress;
+            menuDelSelected.Click += menuDelSelected_Click;
+            menuPrintSelected.Click += menuPrintSelected_Click;
         }
 
+        private void Initialize()
+        {
+            btA0.Text = CadPaper.PaperNameDictionary["A0"];
+            btA1.Text = CadPaper.PaperNameDictionary["A1"];
+            btA2.Text = CadPaper.PaperNameDictionary["A2"];
+            btA3.Text = CadPaper.PaperNameDictionary["A3"];
+            btA4.Text = CadPaper.PaperNameDictionary["A4"];
+            btA43.Text = CadPaper.PaperNameDictionary["A43"];
+            btA44.Text = CadPaper.PaperNameDictionary["A44"];
+            btA33.Text = CadPaper.PaperNameDictionary["A33"];
+            btA34.Text = CadPaper.PaperNameDictionary["A34"];
+            btOther.Text = CadPaper.PaperNameDictionary["OTHER"];
+
+            SetControlEnable(false);
+            tbAdd.Enabled = true;
+
+            lblCurrentFolder.Text = @"文件夹:";
+            lblTotal.Text = @"自然张数:0";
+            lblForA4.Text = @"折合A4:0";
+
+            statusStrip1.Items.Add(lblCurrentFolder);
+            statusStrip1.Items.Add(lblTotal);
+            statusStrip1.Items.Add(lblForA4);
+            statusStrip1.Items.Add(toolStripProgressBar1);
+
+            _hasFillter = false;
+        }
+
+        private void lvDataView_DoubleClick(object sender, EventArgs e)
+        {
+            if (lvDataView.SelectedItems.Count > 0)
+            {
+                CadPaper.Open(lvDataView.SelectedItems[0].SubItems[(int) DataViewColumn.文件路径].Text);
+            }
+        }
+
+        private void lvDataView_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (_isBusy) return;
+            if (e.Button == MouseButtons.Right)
+                lvDataView.ContextMenuStrip = contextMenuStrip1;
+        }
+
+        private void menuPrintSelected_Click(object sender, EventArgs e)
+        {
+            if (_isBusy || !_hasFillter) return;
+            CadPapers selectedPapers = GetCurrentSelectedCadPapers();
+            if (selectedPapers != null)
+            {
+                _isBusy = true;
+                selectedPapers.CadPaperProgress += OnCadPaperProgress;
+                selectedPapers.Plot();
+            }
+        }
+
+        private void menuDelSelected_Click(object sender, EventArgs e)
+        {
+            if (_isBusy) return;
+            CadPapers selectedPapers = GetCurrentSelectedCadPapers();
+            if (selectedPapers != null)
+            {
+                foreach (CadPaper selectedPaper in selectedPapers)
+                {
+                    _cadPapersForPrinting.Remove(selectedPaper);
+                }
+                AddDataToListView(_cadPapersForPrinting);
+            }
+        }
+
+        private void tbAdd_Click(object sender, EventArgs e)
+        {
+            if (_isBusy)
+            {
+                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                if (fbdOpen.ShowDialog() != DialogResult.OK) return;
+                if (fbdOpen.SelectedPath == null) return;
+                _cadPapersForPrinting.RootPath = fbdOpen.SelectedPath;
+                _cadPapersForPrinting.ReadFilesForPrinting();
+
+                AddDataToListView(_cadPapersForPrinting);
+
+                Initialize();
+
+                lblCurrentFolder.Text = string.Format("文件夹：{0}", fbdOpen.SelectedPath);
+                lblTotal.Text = string.Format("自然张数：{0}", _cadPapersForPrinting.NatureCount);
+                tbFilter.Enabled = _cadPapersForPrinting.NatureCount>0;
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(string.Format("程序运行发生错误\n错误描述:{0}", exception.Message));
+            }
+        }
+
+        private void tbFilter_Click(object sender, EventArgs e)
+        {
+            if (_isBusy)
+            {
+                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (_cadPapersForPrinting.Count == 0)
+            {
+                MessageBox.Show(@"需要先打开文件夹，然后再筛选！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            SetControlEnable(false);
+
+            Thread screenThread = new Thread(_cadPapersForPrinting.Screen);
+            screenThread.Start();
+        }
+
+        private void OnMapSheetClick(object sender, EventArgs e)
+        {
+            if (sender == null || _cadPapersForPrinting == null) return;
+            if (_isBusy)
+            {
+                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            btPrint.Enabled = true;
+            tbPrint.Enabled = true;
+            switch (((ToolStripDropDownItem) sender).Name)
+            {
+                case "btAll":
+                    _currentPapers = _cadPapersForPrinting;
+                    btPrint.Enabled = false;
+                    tbPrint.Enabled = false;
+                    _currentMapSheet = "All";
+                    break;
+                case "btA4":
+                    _currentPapers = _cadPapersForPrinting.A4S;
+                    _currentMapSheet = "A4";
+                    break;
+                case "btA3":
+                    _currentPapers = _cadPapersForPrinting.A3S;
+                    _currentMapSheet = "A3";
+                    break;
+                case "btA2":
+                    _currentPapers = _cadPapersForPrinting.A2S;
+                    _currentMapSheet = "A2";
+                    break;
+                case "btA1":
+                    _currentPapers = _cadPapersForPrinting.A1S;
+                    _currentMapSheet = "A1";
+                    break;
+                case "btA0":
+                    _currentPapers = _cadPapersForPrinting.A0S;
+                    _currentMapSheet = "A0";
+                    break;
+                case "btA43":
+                    _currentPapers = _cadPapersForPrinting.A43S;
+                    _currentMapSheet = "A43";
+                    break;
+                case "btA44":
+                    _currentPapers = _cadPapersForPrinting.A44S;
+                    _currentMapSheet = "A44";
+                    break;
+                case "btA33":
+                    _currentPapers = _cadPapersForPrinting.A33S;
+                    _currentMapSheet = "A33";
+                    break;
+                case "btA34":
+                    _currentPapers = _cadPapersForPrinting.A34S;
+                    _currentMapSheet = "A34";
+                    break;
+                case "btOther":
+                    _currentPapers = _cadPapersForPrinting.OtherSizePapers;
+                    _currentMapSheet = "OTHER";
+                    btPrint.Enabled = false;
+                    tbPrint.Enabled = false;
+                    break;
+
+            }
+
+            AddDataToListView(_currentPapers);
+
+            if (AppConfig.CadPapreConfigDictionary.ContainsKey(_currentMapSheet))
+            {
+                txtPrinter.Text = AppConfig.CadPapreConfigDictionary[_currentMapSheet].Printer;
+                txtPrintSize.Text = AppConfig.CadPapreConfigDictionary[_currentMapSheet].LocaleMediaName;
+            }
+        }
+
+        private void tbSetting_Click(object sender, EventArgs e)
+        {
+            if (_isBusy)
+            {
+                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            var f = new OptionsDialog();
+            f.ShowDialog();
+
+            if (AppConfig.CadPapreConfigDictionary.ContainsKey(_currentMapSheet))
+            {
+                txtPrinter.Text = AppConfig.CadPapreConfigDictionary[_currentMapSheet].Printer;
+                txtPrintSize.Text = AppConfig.CadPapreConfigDictionary[_currentMapSheet].CanonicalMediaName;
+            }
+        }
+
+        private void OnPrint_Click(object sender, EventArgs e)
+        {
+            if (_isBusy || _currentPapers == null) return;
+            //if (currentPapers == null) return;
+            _isBusy = true;
+            _currentPapers.CadPaperProgress += OnCadPaperProgress;
+            _currentPapers.Plot();
+        }
+
+        /// <summary>
+        /// 设置ListView控件显示格式
+        /// </summary>
         private void SetDataViewFormat()
         {
             #region
@@ -328,6 +550,105 @@ namespace CADPlot
             });
         }
 
+        private void CompleteScreen()
+        {
+            #region 设置图幅菜单属性
+
+            //if (_cadPapersForPrinting.A4S.Count > 0)
+            //{
+            //    btA4.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A4"],
+            //        _cadPapersForPrinting.A4S.Count,
+            //        _cadPapersForPrinting.A4S.ForA4Count);
+            //    btA4.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A3S.Count > 0)
+            //{
+            //    btA3.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A3"],
+            //        _cadPapersForPrinting.A3S.Count,
+            //        _cadPapersForPrinting.A3S.ForA4Count);
+            //    btA3.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A2S.Count > 0)
+            //{
+            //    btA2.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A2"],
+            //        _cadPapersForPrinting.A2S.Count,
+            //        _cadPapersForPrinting.A2S.ForA4Count);
+            //    btA2.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A1S.Count > 0)
+            //{
+            //    btA1.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A1"],
+            //        _cadPapersForPrinting.A1S.Count,
+            //        _cadPapersForPrinting.A1S.ForA4Count);
+            //    btA1.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A0S.Count > 0)
+            //{
+            //    btA0.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A0"],
+            //        _cadPapersForPrinting.A0S.Count,
+            //        _cadPapersForPrinting.A0S.ForA4Count);
+            //    btA0.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A43S.Count > 0)
+            //{
+            //    btA43.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A43"],
+            //        _cadPapersForPrinting.A43S.Count,
+            //        _cadPapersForPrinting.A43S.ForA4Count);
+            //    btA43.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A44S.Count > 0)
+            //{
+            //    btA44.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A44"],
+            //        _cadPapersForPrinting.A44S.Count,
+            //        _cadPapersForPrinting.A44S.ForA4Count);
+            //    btA44.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A33S.Count > 0)
+            //{
+            //    btA33.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A33"],
+            //        _cadPapersForPrinting.A33S.Count,
+            //        _cadPapersForPrinting.A0S.ForA4Count);
+            //    btA33.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.A34S.Count > 0)
+            //{
+            //    btA34.Text = string.Format("{0}({1}|{2})", CadPaper.PaperNameDictionary["A34"],
+            //        _cadPapersForPrinting.A34S.Count,
+            //        _cadPapersForPrinting.A0S.ForA4Count);
+            //    btA34.Enabled = true;
+            //}
+            //if (_cadPapersForPrinting.OtherSizePapers.Count > 0)
+            //{
+            //    btOther.Text = string.Format("{0}({1})", CadPaper.PaperNameDictionary["OTHER"],
+            //        _cadPapersForPrinting.OtherSizePapers.Count);
+            //    btOther.Enabled = true;
+            //}
+
+            #endregion
+
+            btA0.Enabled = _cadPapersForPrinting.A0S.Count>0;
+            btA1.Enabled = _cadPapersForPrinting.A1S.Count>0;
+            btA2.Enabled = _cadPapersForPrinting.A2S.Count>0;
+            btA3.Enabled = _cadPapersForPrinting.A3S.Count>0;
+            btA4.Enabled = _cadPapersForPrinting.A4S.Count>0;
+            btA43.Enabled = _cadPapersForPrinting.A43S.Count>0;
+            btA44.Enabled = _cadPapersForPrinting.A44S.Count>0;
+            btA33.Enabled = _cadPapersForPrinting.A33S.Count>0;
+            btA34.Enabled = _cadPapersForPrinting.A33S.Count>0;
+            btOther.Enabled = _cadPapersForPrinting.OtherSizePapers.Count>0;
+
+            lblForA4.Text = string.Format("折合A4：{0}", _cadPapersForPrinting.ForA4Count);
+
+            MessageBox.Show(@"所有图纸已经筛选完成", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            tbAdd.Enabled = true;
+            tbFilter.Enabled = true;
+            tbMapSheet.Enabled = true;
+            btPrint.Enabled = true;
+            tbPrint.Enabled = true;
+            _isBusy = false;
+            _hasFillter = true;
+        }
+
         //是否已打印，1文件名，2图幅，3已打印，4角度，5比例，6宽度，7高度，8文件路径，9打印机，10打印尺寸，11打印样式
         private void AddDataToListView(IEnumerable<CadPaper> cadPapers)
         {
@@ -338,7 +659,7 @@ namespace CADPlot
                 ListViewItem item = lvDataView.Items.Add(string.Format("{0}{1}", paper.IsPrinted ? "*" : "", i));
                 item.SubItems.AddRange(new[]
                 {
-                    paper.FileShortName, paper.FormatName, paper.PrintedNum.ToString(), paper.Angle.ToString(),
+                    paper.FileShortName, paper.MapSheet, paper.PrintedNum.ToString(), paper.Angle.ToString(),
                     paper.Scale.ToString(), paper.Width.ToString(), paper.Height.ToString(), paper.FileFullName,
                     paper.PlotConfigName, paper.CanonicalMediaName, paper.StyleSheet
                 });
@@ -346,41 +667,62 @@ namespace CADPlot
             }
         }
 
-        public void OnPlotingEvent(object sender, CadPapers.CadPaperProgressEventArgs args)
+        private void OnCadPaperProgress(CadPaperProgressEventArgs args)
         {
+            Invoke(new CadPaperProgressEventHandler(UpdateUI), args);
+        }
+
+        private void UpdateUI(object invokeArgs)
+        {
+            CadPaperProgressEventArgs args = (CadPaperProgressEventArgs) invokeArgs;
             CadPaper paper = args.CurrentPaper;
             switch (args.SenderMethod)
             {
-                case CadPapers.CadPaperProgressEventSender.check: //筛选文件
+                case CadPaperProgressSender.筛选:
                 {
                     ListViewItem item = lvDataView.Items[args.CurrentPoint - 1];
                     if (item.SubItems[(int) DataViewColumn.文件名].Text == paper.FileShortName)
                     {
-                        item.SubItems[(int) DataViewColumn.图幅].Text = paper.FormatName;
-                        item.SubItems[(int) DataViewColumn.已打印].Text = paper.PrintedNum.ToString();
-                        item.SubItems[(int) DataViewColumn.角度].Text = paper.Angle.ToString();
-                        item.SubItems[(int) DataViewColumn.比例].Text = paper.Scale.ToString();
-                        item.SubItems[(int) DataViewColumn.宽度].Text = paper.Width.ToString();
-                        item.SubItems[(int) DataViewColumn.高度].Text = paper.Height.ToString();
+                        item.SubItems[(int) DataViewColumn.图幅].Text = paper.MapSheet;
+                        item.SubItems[(int) DataViewColumn.已打印].Text =
+                            paper.PrintedNum.ToString(CultureInfo.InvariantCulture);
+                        item.SubItems[(int) DataViewColumn.角度].Text = paper.Angle.ToString(CultureInfo.InvariantCulture);
+                        item.SubItems[(int) DataViewColumn.比例].Text = paper.Scale.ToString(CultureInfo.InvariantCulture);
+                        item.SubItems[(int) DataViewColumn.宽度].Text = paper.Width.ToString(CultureInfo.InvariantCulture);
+                        item.SubItems[(int) DataViewColumn.高度].Text = paper.Height.ToString(CultureInfo.InvariantCulture);
                         item.SubItems[(int) DataViewColumn.打印机].Text = paper.PlotConfigName;
                         item.SubItems[(int) DataViewColumn.打印尺寸].Text = paper.CanonicalMediaName;
                         item.SubItems[(int) DataViewColumn.打印样式].Text = paper.StyleSheet;
                     }
                     break;
                 }
-                case CadPapers.CadPaperProgressEventSender.plot:
+                case CadPaperProgressSender.打印:
                 {
-                    //var item = lvDataView.Items.Find(paper.FileShortName, false);
-                    //item[0].Text = @"*";
                     ListViewItem item = lvDataView.Items[args.CurrentPoint - 1];
                     if (item.SubItems[(int) DataViewColumn.文件名].Text == paper.FileShortName)
                     {
                         item.SubItems[(int) DataViewColumn.是否已打印].Text = string.Format("{0}{1}", "*",
                             item.SubItems[0].Text);
-                        item.SubItems[(int) DataViewColumn.已打印].Text = paper.PrintedNum.ToString();
+                        item.SubItems[(int) DataViewColumn.已打印].Text =
+                            paper.PrintedNum.ToString(CultureInfo.InvariantCulture);
                     }
                     break;
                 }
+                case CadPaperProgressSender.筛选完成:
+                {
+                    CompleteScreen();
+                    break;
+                }
+                case CadPaperProgressSender.打印完成:
+                {
+                    _isBusy=false;
+                    break;
+                }
+                case CadPaperProgressSender.运行错误:
+                {
+                    _isBusy = false;
+                    break;
+                }      
             }
 
             if (args.CurrentPoint < args.Count)
@@ -391,273 +733,44 @@ namespace CADPlot
             }
             else
                 toolStripProgressBar1.Visible = false;
-            //dgPaperList.Refresh();
         }
 
-        private void Initialize()
+        private CadPapers GetCurrentSelectedCadPapers()
         {
-            btA0.Text = PaperDictionary["A0"];
-            btA1.Text = PaperDictionary["A1"];
-            btA2.Text = PaperDictionary["A2"];
-            btA3.Text = PaperDictionary["A3"];
-            btA4.Text = PaperDictionary["A4"];
-            btA43.Text = PaperDictionary["A43"];
-            btA44.Text = PaperDictionary["A44"];
-            btA33.Text = PaperDictionary["A33"];
-            btA34.Text = PaperDictionary["A34"];
-            btOther.Text = PaperDictionary["OTHER"];
-
-            btA0.Enabled = false;
-            btA1.Enabled = false;
-            btA2.Enabled = false;
-            btA3.Enabled = false;
-            btA4.Enabled = false;
-            btA43.Enabled = false;
-            btA44.Enabled = false;
-            btA33.Enabled = false;
-            btA34.Enabled = false;
-            btOther.Enabled = false;
-
-            lblCurrentFolder.Text = @"文件夹:";
-            lblTotal.Text = @"自然张数:0";
-            lblForA4.Text = @"折合A4:0";
-
-            btPrint.Enabled = false;
-            statusStrip1.Items.Add(lblCurrentFolder);
-            statusStrip1.Items.Add(lblTotal);
-            statusStrip1.Items.Add(lblForA4);
-            statusStrip1.Items.Add(toolStripProgressBar1);
+            if (lvDataView.SelectedItems.Count == 0)
+                return null;
+            var selectedPapers = new CadPapers();
+            selectedPapers.AddRange(from ListViewItem selectedItem in lvDataView.SelectedItems
+                from item in _cadPapersForPrinting
+                where item.FileFullName == selectedItem.SubItems[(int) DataViewColumn.文件路径].Text
+                select item);
+            return selectedPapers;
         }
 
-        private void btGetFilesToPrint_Click(object sender, EventArgs e)
+        private void SetControlEnable(bool value)
         {
-            if (IsBusy)
-            {
-                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            try
-            {
-                if (fbdOpen.ShowDialog() != DialogResult.OK) return;
-                if (fbdOpen.SelectedPath == null) return;
-                cadPapersToPrint.RootPath = fbdOpen.SelectedPath;
-                cadPapersToPrint.GetPaperToPrintList();
+            btA0.Enabled = value;
+            btA1.Enabled = value;
+            btA2.Enabled = value;
+            btA3.Enabled = value;
+            btA4.Enabled = value;
+            btA43.Enabled = value;
+            btA44.Enabled = value;
+            btA33.Enabled = value;
+            btA34.Enabled = value;
+            btOther.Enabled = value;
 
-                //dgPaperList.DataSource = _cadPapersToPrint;
-                AddDataToListView(cadPapersToPrint);
+            btPrint.Enabled = value;
+            tbPrint.Enabled = value;
 
-                Initialize();
-                lblCurrentFolder.Text = string.Format("文件夹：{0}", fbdOpen.SelectedPath);
-                lblTotal.Text = string.Format("自然张数：{0}", cadPapersToPrint.NatureCount);
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(string.Format("程序运行发生错误\n错误描述:{0}", exception.Message));
-            }
+            tbAdd.Enabled = value;
+            tbFilter.Enabled = value;
         }
 
-        private void OptionButtonClick(object sender, EventArgs e)
+        private void tbCount_Click(object sender, EventArgs e)
         {
-            if (sender == null) return;
-            if (IsBusy)
-            {
-                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            btPrint.Enabled = true;
-            switch (((Button) sender).Name)
-            {
-                case "ALL":
-                    currentPapers = cadPapersToPrint;
-
-                    break;
-                case "btA4":
-                    currentPapers = cadPapersToPrint.A4S;
-                    _currentFormatName = "A4";
-                    break;
-                case "btA3":
-                    currentPapers = cadPapersToPrint.A3S;
-                    _currentFormatName = "A3";
-                    break;
-                case "btA2":
-                    currentPapers = cadPapersToPrint.A2S;
-                    _currentFormatName = "A2";
-                    break;
-                case "btA1":
-                    currentPapers = cadPapersToPrint.A1S;
-                    _currentFormatName = "A1";
-                    break;
-                case "btA0":
-                    currentPapers = cadPapersToPrint.A0S;
-                    _currentFormatName = "A0";
-                    break;
-                case "btA43":
-                    currentPapers = cadPapersToPrint.A43S;
-                    _currentFormatName = "A43";
-                    break;
-                case "btA44":
-                    currentPapers = cadPapersToPrint.A44S;
-                    _currentFormatName = "A44";
-                    break;
-                case "btA33":
-                    currentPapers = cadPapersToPrint.A33S;
-                    _currentFormatName = "A33";
-                    break;
-                case "btA34":
-                    currentPapers = cadPapersToPrint.A34S;
-                    _currentFormatName = "A34";
-                    break;
-                case "btOther":
-                    currentPapers = cadPapersToPrint.OtherSizePapers;
-                    _currentFormatName = "OTHER";
-                    btPrint.Enabled = false;
-                    break;
-            }
-            //dgPaperList.DataSource = currentPapers;
-            AddDataToListView(currentPapers);
-
-            txtPrinter.Text = AppConfig.CadPapreConfigDictionary[_currentFormatName].Printer;
-            txtPrintSize.Text = AppConfig.CadPapreConfigDictionary[_currentFormatName].LocaleMediaName;
-        }
-
-        private void btFilter_Click(object sender, EventArgs e)
-        {
-            //Thread filter = new Thread(_cadPapersToPrint.CheckPaperSize);
-            //filter.Start();
-            if (IsBusy)
-            {
-                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            if (cadPapersToPrint.Count == 0)
-            {
-                MessageBox.Show(@"需要先打开文件夹，然后再筛选！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            IsBusy = true;
-
-            cadPapersToPrint.CheckPaperSize();
-
-            lstOptionList.Items.Clear();
-            if (cadPapersToPrint.A4S.Count > 0)
-            {
-                btA4.Text = string.Format("{0}({1}|{2})", PaperDictionary["A4"], cadPapersToPrint.A4S.Count,
-                    cadPapersToPrint.A4S.ForA4Count);
-                btA4.Enabled = true;
-            }
-            if (cadPapersToPrint.A3S.Count > 0)
-            {
-                btA3.Text = string.Format("{0}({1}|{2})", PaperDictionary["A3"], cadPapersToPrint.A3S.Count,
-                    cadPapersToPrint.A3S.ForA4Count);
-                btA3.Enabled = true;
-            }
-            if (cadPapersToPrint.A2S.Count > 0)
-            {
-                btA2.Text = string.Format("{0}({1}|{2})", PaperDictionary["A2"], cadPapersToPrint.A2S.Count,
-                    cadPapersToPrint.A2S.ForA4Count);
-                btA2.Enabled = true;
-            }
-            if (cadPapersToPrint.A1S.Count > 0)
-            {
-                btA1.Text = string.Format("{0}({1}|{2})", PaperDictionary["A1"], cadPapersToPrint.A1S.Count,
-                    cadPapersToPrint.A1S.ForA4Count);
-                btA1.Enabled = true;
-            }
-            if (cadPapersToPrint.A0S.Count > 0)
-            {
-                btA0.Text = string.Format("{0}({1}|{2})", PaperDictionary["A0"], cadPapersToPrint.A0S.Count,
-                    cadPapersToPrint.A0S.ForA4Count);
-                btA0.Enabled = true;
-            }
-            if (cadPapersToPrint.A43S.Count > 0)
-            {
-                btA43.Text = string.Format("{0}({1}|{2})", PaperDictionary["A43"], cadPapersToPrint.A43S.Count,
-                    cadPapersToPrint.A43S.ForA4Count);
-                btA43.Enabled = true;
-            }
-            if (cadPapersToPrint.A44S.Count > 0)
-            {
-                btA44.Text = string.Format("{0}({1}|{2})", PaperDictionary["A44"], cadPapersToPrint.A44S.Count,
-                    cadPapersToPrint.A44S.ForA4Count);
-                btA44.Enabled = true;
-            }
-            if (cadPapersToPrint.A33S.Count > 0)
-            {
-                btA33.Text = string.Format("{0}({1}|{2})", PaperDictionary["A33"], cadPapersToPrint.A33S.Count,
-                    cadPapersToPrint.A0S.ForA4Count);
-                btA33.Enabled = true;
-            }
-            if (cadPapersToPrint.A34S.Count > 0)
-            {
-                btA34.Text = string.Format("{0}({1}|{2})", PaperDictionary["A34"], cadPapersToPrint.A34S.Count,
-                    cadPapersToPrint.A0S.ForA4Count);
-                btA34.Enabled = true;
-            }
-            if (cadPapersToPrint.OtherSizePapers.Count > 0)
-            {
-                btOther.Text = string.Format("{0}({1})", PaperDictionary["OTHER"],
-                    cadPapersToPrint.OtherSizePapers.Count);
-                btOther.Enabled = true;
-            }
-
-            lblForA4.Text = string.Format("折合A4：{0}", cadPapersToPrint.ForA4Count);
-
-            MessageBox.Show(@"所有图纸已经筛选完成", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            IsBusy = false;
-        }
-
-        private void btSetting_Click(object sender, EventArgs e)
-        {
-            if (IsBusy)
-            {
-                MessageBox.Show(@"打印机正在工作，请稍后再重试！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            var f = new OptionsDialog();
+            CountForm f = new CountForm(_cadPapersForPrinting);
             f.ShowDialog();
-
-            if (AppConfig.CadPapreConfigDictionary.ContainsKey(_currentFormatName))
-            {
-                txtPrinter.Text = AppConfig.CadPapreConfigDictionary[_currentFormatName].Printer;
-                txtPrintSize.Text = AppConfig.CadPapreConfigDictionary[_currentFormatName].CanonicalMediaName;
-            }
-        }
-
-        private void btPrint_Click(object sender, EventArgs e)
-        {
-            IsBusy = true;
-            currentPapers.PlotingEvent += OnPlotingEvent;
-            currentPapers.Plot();
-            IsBusy = false;
-        }
-
-        private void lvDataView_DoubleClick(object sender, EventArgs e)
-        {
-            if (lvDataView.SelectedItems.Count > 0)
-            {
-                CadPaper.Open(lvDataView.SelectedItems[0].SubItems[(int) DataViewColumn.文件路径].Text);
-            }
-        }
-
-        private enum DataViewColumn
-        {
-            是否已打印 = 0,
-            文件名 = 1,
-            图幅 = 2,
-            已打印 = 3,
-            角度 = 4,
-            比例 = 5,
-            宽度 = 6,
-            高度 = 7,
-            文件路径 = 8,
-            打印机 = 9,
-            打印尺寸 = 10,
-            打印样式 = 11
-        }
-
-        private void lblCurrentFolder_MouseMove(object sender, MouseEventArgs e)
-        {
-
         }
     }
 }

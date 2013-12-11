@@ -30,9 +30,11 @@ namespace CADPlot.Moudle
 
                 _initialized = true;
             }
-            catch
+            catch(Exception)
             {
                 MessageBox.Show(@"调用CAD程序出错！", @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _application = null;
+                _initialized = false;
             }
         }
 

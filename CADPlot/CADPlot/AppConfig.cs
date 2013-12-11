@@ -11,7 +11,7 @@ namespace CADPlot
 
         static AppConfig()
         {
-//#if(DEBUG)
+            //#if(DEBUG)
                 Console.WriteLine(@"配置文件路径：{0}", FilePath);
             //#endif
         }
@@ -63,6 +63,9 @@ namespace CADPlot
         }
     }
 
+    /// <summary>
+    /// dwg图纸配置元素
+    /// </summary>
     public class CadDrawingConfigElement : ConfigurationElement
     {
         [ConfigurationProperty("name", IsKey = true, IsRequired = true)]

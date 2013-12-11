@@ -7,13 +7,13 @@ using AutoCAD;
 
 namespace CADPlot.Moudle
 {
-    public class CadPaperToPrint : CadPapers
+    public class CadPaperForPrinting : CadPapers
     {
-        public CadPaperToPrint()
+        public CadPaperForPrinting()
         {
         }
 
-        public CadPaperToPrint(string rootPath)
+        public CadPaperForPrinting(string rootPath)
         {
             RootPath = rootPath;
         }
@@ -28,7 +28,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A0"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A0"));
                 return paperList;
             }
         }
@@ -38,7 +38,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A1"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A1"));
                 return paperList;
             }
         }
@@ -48,7 +48,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A2"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A2"));
                 return paperList;
             }
         }
@@ -58,7 +58,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A3"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A3"));
                 return paperList;
             }
         }
@@ -68,7 +68,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A4"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A4"));
                 return paperList;
             }
         }
@@ -78,7 +78,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A33"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A33"));
                 return paperList;
             }
         }
@@ -88,7 +88,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A34"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A34"));
                 return paperList;
             }
         }
@@ -98,7 +98,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A43"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A43"));
                 return paperList;
             }
         }
@@ -108,7 +108,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "A44"));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "A44"));
                 return paperList;
             }
         }
@@ -118,7 +118,7 @@ namespace CADPlot.Moudle
             get
             {
                 var paperList = new CadPapers();
-                paperList.AddRange(this.Where(papre => papre.FormatName == "other".ToUpper()));
+                paperList.AddRange(this.Where(papre => papre.MapSheet == "other".ToUpper()));
                 return paperList;
             }
         }
@@ -126,7 +126,7 @@ namespace CADPlot.Moudle
         /// <summary>
         ///     读取所有待打印文件列表
         /// </summary>
-        private void SelectFiles(string papterRootPath)
+        private void SelectDwgFiles(string papterRootPath)
         {
             try
             {
@@ -140,7 +140,7 @@ namespace CADPlot.Moudle
 
                 foreach (DirectoryInfo folder in rootFolder.GetDirectories())
                 {
-                    SelectFiles(folder.FullName);
+                    SelectDwgFiles(folder.FullName);
                 }
             }
             catch (Exception ex)
@@ -152,66 +152,10 @@ namespace CADPlot.Moudle
         /// <summary>
         ///     获取待打印图纸列表
         /// </summary>
-        public void GetPaperToPrintList()
+        public void ReadFilesForPrinting()
         {
             Clear();
-            SelectFiles(RootPath);
-        }
-
-        /// <summary>
-        ///     筛选图纸，确定图幅大小
-        /// </summary>
-        public void CheckPaperSize()
-        {
-            using (var cad = new AutoCadConnector())
-            {
-                int i = 1;
-                foreach (CadPaper  paper  in this)
-                {
-                    AcadDocument doc = cad.Application.Documents.Open(paper.FileFullName);
-                    paper.Scale = Convert.ToDouble(doc.GetVariable("DIMSCALE"));
-
-                    var points = (double[]) doc.Limits;
-
-                    var width = (int) Math.Ceiling((points[2] - points[0])/paper.Scale);
-                    var height = (int) Math.Ceiling((points[3] - points[1])/paper.Scale);
-
-                    doc.Close(false, "");
-                    paper.Angle = width > height ? 90 : 0;
-                    paper.Width = width;
-                    paper.Height = height;
-                    paper.PrintedNum = 0;
-
-                    Application.DoEvents();
-                    Thread.Sleep(500);
-
-                    var args = new CadPaperProgressEventArgs
-                    {
-                        Count = Count,
-                        CurrentPoint = i++,
-                        CurrentPaper=paper,
-                        SenderMethod=CadPaperProgressEventSender.check
-                    };
-                    OnPlotingEvent(args);
-                }
-            }
-        }
-
-        public void Print(CadPapers cadPapers)
-        {
-            foreach (CadPaper paper in cadPapers)
-            {
-                paper.Plot();
-            }
-        }
-
-        /// <summary>
-        ///     按照指定的图幅打印输出
-        /// </summary>
-        /// <param name="cadPapers">待打印的图纸列表</param>
-        /// <param name="formatName">指定打印图幅名称</param>
-        public void Print(CadPapers cadPapers, string formatName)
-        {
+            SelectDwgFiles(RootPath);
         }
     }
 }

@@ -78,11 +78,19 @@
     <Reference Include="System" />
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AppConfig.cs" />
+    <Compile Include="CountForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="CountForm.Designer.cs">
+      <DependentUpon>CountForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Moudle\CadPapers.cs" />
     <Compile Include="Moudle\CadPaperToPrint.cs" />
     <Compile Include="frmShow.cs">
@@ -101,6 +109,9 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <EmbeddedResource Include="CountForm.resx">
+      <DependentUpon>CountForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="frmShow.resx">
       <DependentUpon>frmShow.cs</DependentUpon>
     </EmbeddedResource>
@@ -148,6 +159,11 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="favicon.ico" />
+    <None Include="Resources\money.ico" />
+    <None Include="Resources\admintools.ico" />
+    <None Include="Resources\books.ico" />
+    <None Include="Resources\file.png" />
+    <None Include="Resources\Print.png" />
     <None Include="Resources\set.ico" />
     <None Include="Resources\printer.ico" />
     <None Include="Resources\pin_blue.ico" />
