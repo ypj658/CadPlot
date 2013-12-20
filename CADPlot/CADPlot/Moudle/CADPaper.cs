@@ -179,7 +179,7 @@ namespace CADPlot.Moudle
 
                     #endregion
 
-                    layout.RefreshPlotDeviceInfo();
+                    //layout.RefreshPlotDeviceInfo();
 
                     //ConfigName    指定打印机配置名。用于布局或打印配置的 PC3 文件或打印设备的名称。 
                     layout.ConfigName = PlotConfigName;
@@ -208,14 +208,22 @@ namespace CADPlot.Moudle
 
                     //CanonicalMediaName    按名称指定图纸尺寸.String[字符串]; 可读写,图纸尺寸的名称
                     layout.CanonicalMediaName = CanonicalMediaName;
-
+                    layout.PaperUnits = AcPlotPaperUnits.acMillimeters;
                     layout.PlotOrigin = new double[] {0, 0};
                     layout.UseStandardScale = true;
                     layout.StandardScale = AcPlotScale.acScaleToFit;
-                    layout.PlotRotation = Angle == 90 ? AcPlotRotation.ac90degrees : AcPlotRotation.ac0degrees;
+                    if (MapSheet == "A3" || MapSheet=="A4")
+                        layout.PlotRotation = Angle == 0 ? AcPlotRotation.ac90degrees : AcPlotRotation.ac0degrees;
+                    else
+                        layout.PlotRotation = Angle == 90 ? AcPlotRotation.ac90degrees : AcPlotRotation.ac0degrees;
+                    layout.RefreshPlotDeviceInfo();
+                    double w, h;
+                    layout.GetPaperSize(out w,out h);
+                    Console.WriteLine(@"图幅：{0},{1}*{2}", CanonicalMediaName,w, h);
+                    
                     doc.Plot.PlotToDevice(null);
                     doc.Close(false);
-
+                    
                     PrintedNum++;
                 }
                 catch (Exception ex)
@@ -241,8 +249,9 @@ namespace CADPlot.Moudle
                     var width = (int) Math.Ceiling((points[2] - points[0])/Scale);
                     var height = (int) Math.Ceiling((points[3] - points[1])/Scale);
 
+                    //Console.WriteLine(@"file name:{0},GetPaperSize:{1}*{2}", FileShortName, w,h);
                     doc.Close(false, "");
-                    Angle = width > height ? 90 : 0;
+                    Angle = width > height ? 0 : 90;
                     Width = width;
                     Height = height;
                     PrintedNum = 0;

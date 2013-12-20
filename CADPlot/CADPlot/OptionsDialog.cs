@@ -169,5 +169,36 @@ namespace CADPlot
                 }
             }
         }
+
+        private void cbSize_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            using (var cad = new AutoCadConnector())
+            {
+                try
+                {
+                    AcadDocument doc;
+                    if (cad.Application.Documents.Count > 0)
+                        doc = cad.Application.Documents.Item(0) ?? cad.Application.Documents.Add();
+                    else
+                        doc = cad.Application.Application.Documents.Add();
+
+                    AcadLayout layout = doc.ModelSpace.Layout;
+
+                    layout.ConfigName = cbPrinterList.Text;
+                    layout.CanonicalMediaName = mediaNameDictionary[cbSize.Text];
+                    
+                    double w, h;
+                    layout.GetPaperSize(out w, out h);
+                    layout.PlotRotation = w > h ? AcPlotRotation.ac0degrees : AcPlotRotation.ac90degrees;
+                    layout.RefreshPlotDeviceInfo();
+                    lblPaperSize.Text = string.Format("打印尺寸:{0}*{1}", Math.Ceiling(w), Math.Ceiling(h));
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(string.Format("调用CAD程序出错！\n错误描述:{0}", ex.Message), @"批量打印", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                }
+            }
+        }
     }
 }

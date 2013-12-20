@@ -21,19 +21,6 @@ namespace CADPlot.Moudle
 
     public class CadPaperProgressEventArgs:EventArgs
     {
-        //public CadPaperProgressEventArgs(CadPaperProgressSender senderMethod, CadPaper currentCadPaper, int count,
-        //    int currentPoint)
-        //{
-        //    Count = count;
-        //    CurrentPoint = currentPoint;
-        //    SenderMethod = senderMethod;
-        //    CurrentPaper = currentCadPaper;
-        //}
-
-        //public CadPaperProgressEventArgs()
-        //{
-        //}
-
         public int Count { get; set; }
         public int CurrentPoint { get; set; }
 
@@ -83,6 +70,8 @@ namespace CADPlot.Moudle
                 {
                     try
                     {
+                        if (cadpaper.MapSheet.ToLower()=="other")
+                            continue;
                         cadpaper.Print();
                         //Thread.Sleep(500);
                         var args = new CadPaperProgressEventArgs
@@ -122,20 +111,21 @@ namespace CADPlot.Moudle
                 {
                     try
                     {
-                        AcadDocument doc = cad.Application.Documents.Open(paper.FileFullName);
-                        paper.Scale = Convert.ToDouble(doc.GetVariable("DIMSCALE"));
+                        //AcadDocument doc = cad.Application.Documents.Open(paper.FileFullName);
+                        //paper.Scale = Convert.ToDouble(doc.GetVariable("DIMSCALE"));
 
-                        var points = (double[]) doc.Limits;
+                        //var points = (double[]) doc.Limits;
 
-                        var width = (int) Math.Ceiling((points[2] - points[0])/paper.Scale);
-                        var height = (int) Math.Ceiling((points[3] - points[1])/paper.Scale);
+                        //var width = (int) Math.Ceiling((points[2] - points[0])/paper.Scale);
+                        //var height = (int) Math.Ceiling((points[3] - points[1])/paper.Scale);
 
-                        doc.Close(false, "");
-                        paper.Angle = width > height ? 90 : 0;
-                        paper.Width = width;
-                        paper.Height = height;
-                        paper.PrintedNum = 0;
+                        //doc.Close(false, "");
+                        //paper.Angle = width > height ? 90 : 0;
+                        //paper.Width = width;
+                        //paper.Height = height;
+                        //paper.PrintedNum = 0;
 
+                        paper.Screen();
                         var args = new CadPaperProgressEventArgs
                         {
                             Count = Count,
@@ -145,7 +135,6 @@ namespace CADPlot.Moudle
                         };
                         //Console.WriteLine(@"begin invoke OnCadPaperProgress ,id:{0},{1}",Thread.CurrentThread.ManagedThreadId,i);
                         OnCadPaperProgress(args);
-
                     }
                     catch (COMException ex)
                     {

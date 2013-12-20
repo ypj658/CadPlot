@@ -37,6 +37,7 @@
             this.btCancel = new System.Windows.Forms.Button();
             this.label3 = new System.Windows.Forms.Label();
             this.cbSettingFor = new System.Windows.Forms.ComboBox();
+            this.lblPaperSize = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // label1
@@ -76,10 +77,11 @@
             this.cbSize.Name = "cbSize";
             this.cbSize.Size = new System.Drawing.Size(288, 20);
             this.cbSize.TabIndex = 3;
+            this.cbSize.SelectedIndexChanged += new System.EventHandler(this.cbSize_SelectedIndexChanged);
             // 
             // btOK
             // 
-            this.btOK.Location = new System.Drawing.Point(55, 149);
+            this.btOK.Location = new System.Drawing.Point(54, 187);
             this.btOK.Name = "btOK";
             this.btOK.Size = new System.Drawing.Size(75, 23);
             this.btOK.TabIndex = 4;
@@ -89,7 +91,7 @@
             // 
             // btCancel
             // 
-            this.btCancel.Location = new System.Drawing.Point(179, 149);
+            this.btCancel.Location = new System.Drawing.Point(178, 187);
             this.btCancel.Name = "btCancel";
             this.btCancel.Size = new System.Drawing.Size(75, 23);
             this.btCancel.TabIndex = 5;
@@ -116,11 +118,21 @@
             this.cbSettingFor.TabIndex = 1;
             this.cbSettingFor.SelectedIndexChanged += new System.EventHandler(this.cbSettingFor_SelectedIndexChanged);
             // 
+            // lblPaperSize
+            // 
+            this.lblPaperSize.AutoSize = true;
+            this.lblPaperSize.Location = new System.Drawing.Point(13, 155);
+            this.lblPaperSize.Name = "lblPaperSize";
+            this.lblPaperSize.Size = new System.Drawing.Size(65, 12);
+            this.lblPaperSize.TabIndex = 6;
+            this.lblPaperSize.Text = "打印尺寸：";
+            // 
             // OptionsDialog
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(310, 183);
+            this.ClientSize = new System.Drawing.Size(310, 213);
+            this.Controls.Add(this.lblPaperSize);
             this.Controls.Add(this.btCancel);
             this.Controls.Add(this.btOK);
             this.Controls.Add(this.cbSize);
@@ -149,6 +161,7 @@
         private System.Windows.Forms.Button btCancel;
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.ComboBox cbSettingFor;
+        private System.Windows.Forms.Label lblPaperSize;
 
 
     }
